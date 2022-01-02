@@ -7,13 +7,21 @@
  ;; If there is more than one, they won't work right.
  '(ivy-rich-mode t)
  '(package-selected-packages
-   '(general python-mode dap-mode counsel-projectile typescript-mode desktop-environment evil-magit projectile evil-collection evil helpful counsel ivy-rich which-key rainbow-delimiters doom-modeline swiper ivy use-package magit)))
+   '(emojify general python-mode dap-mode counsel-projectile typescript-mode desktop-environment evil-magit projectile evil-collection evil helpful counsel ivy-rich which-key rainbow-delimiters doom-modeline swiper ivy use-package magit))
+ '(set-input-method "us")
+ '(set-language-environment "English")
+ '(set-language-environment-hook nil)
+ '(smtpmail-smtp-server "smtp.gmail.com")
+ '(smtpmail-smtp-service 25))
 (custom-set-faces
  ;; custom-set-faces was added by Custom.
  ;; If you edit it by hand, you could mess it up, so be careful.
  ;; Your init file should contain only one such instance.
  ;; If there is more than one, they won't work right.
  )
+
+(load "server")
+(unless (server-running-p) (server-start))
 
 
 (setq inhibit-startup-message t) ;; supprime le message d'accueil
@@ -29,6 +37,8 @@
 
 ;; active le theme darcula de jetbrains que j'aime bien
 (add-to-list 'custom-theme-load-path "~/.emacs.d/themes/")(load-theme 'tango-dark)
+;; (add-to-list 'default-frame-alist '(font . "JetBrains Mono-14"))
+;; (add-to-list 'default-frame-alist '(line-spacing . 0.2))
 (load-theme 'jetbrains-darcula t)
 
 (global-set-key (kbd "<escape>") 'keyboard-escape-quit) ;; relie la touche escape à l'action quit
@@ -63,7 +73,7 @@
 (unless package-archive-contents
  (package-refresh-contents))
 
-; Initialise use-package sur les plateformes non-linux
+;; Initialise use-package sur les plateformes non-linux
 (unless (package-installed-p 'use-package)
    (package-install 'use-package))
 
@@ -83,6 +93,9 @@
 
 ;; installe swiper (outil puissant pour chercher dans un document) au cas où ivy ne l'installe pas par défaut via elpa ou melpa
 (use-package swiper :ensure t)
+
+(use-package emojify
+  :hook (after-init . global-emojify-mode))
 
 ;; installe ivy: https://github.com/abo-abo/swiper
 (use-package ivy
@@ -152,7 +165,7 @@
   "ts" '(hydra-text-scale/body :which-key "scale text"))
 
 ;; Ctrl + Shift + N pour changer de buffer un peu comme dans les IDE de jetbrains quand on cherche des fichiers dans le projet
-(global-set-key (kbd "C-S-n") 'counsel-switch-buffer)
+(global-set-key (kbd "C-M-n") 'counsel-switch-buffer)
 
 
 (defun efs/lsp-mode-setup ()
@@ -164,7 +177,7 @@
   :commands (lsp lsp-deferred)
   :hook (lsp-mode . efs/lsp-mode-setup)
   :init
-  (setq lsp-keymap-prefix "C-c l")  ;; Or 'C-l', 's-l'
+  (setq lsp-keymap-prefix "C-c l")
   :config
   (lsp-enable-which-key-integration t))
 
@@ -186,11 +199,8 @@
   ;; (dap-ui-mode 1)
 
   :config
-  ;; Set up Node debugging
   (require 'dap-node)
-  (dap-node-setup) ;; Automatically installs Node debug adapter if needed
-
-  ;; Bind `C-c l d` to `dap-hydra` for easy access
+  (dap-node-setup)
   (general-define-key
     :keymaps 'lsp-mode-map
     :prefix lsp-keymap-prefix
@@ -207,7 +217,6 @@
   :ensure t
   :hook (python-mode . lsp-deferred)
   :custom
-  ;; NOTE: Set these if Python 3 is called "python3" on your system!
   (python-shell-interpreter "python3")
   (dap-python-executable "python3")
   (dap-python-debugger 'debugpy)
@@ -257,7 +266,7 @@
   :custom
   (magit-display-buffer-function #'magit-display-buffer-same-window-except-diff-v1))
 
-
+;; hook qui lance des applications en fond
 (defun efs/run-in-background (command)
   (let ((command-parts (split-string command "[ ]+")))
     (apply #'call-process `(,(car command-parts) nil 0 nil ,@(cdr command-parts)))))
@@ -265,7 +274,7 @@
 ;; hooks au démarrage de exwm
 (defun efs/exwm-init-hook ()
   (exwm-workspace-switch-create 1)
-  ;; Show the time and date in modeline
+  ;; Montre l'heure est la date en modeline
   (setq display-time-day-and-date t)
   (setq display-time-format "%H:%M:%S %a %d %b %Y")
   (display-time-mode 1)
@@ -275,7 +284,7 @@
   (efs/run-in-background "pasystray")
   (efs/run-in-background "blueman-applet")) 
 
-;; formattage du nom des buffer dans exwm pour mieux s'y retrouver
+;; formattage du nom des buffers dans exwm pour mieux s'y retrouver
 (defun efs/exwm-update-class ()
   (exwm-workspace-rename-buffer exwm-class-name))
 
@@ -283,31 +292,29 @@
   (pcase exwm-class-name
     ("Chromium" (exwm-workspace-rename-buffer (format "Chromium: %s" exwm-title)))))
 
-
+;; message qui pop dans le mini-bufffer quand un nouveau buffer est ouvert
 (defun efs/configure-window-by-class ()
   (interactive)
   (message "Windows '%s' appeared" exwm-class-name)
   (pcase exwm-class-name
     ("Firefox" (exwm-workspace-move-window 2))
+    ("Chromium" (exwm-workspace-move-window 1))
     ("mpv" (exwm-floating-toggle-floating)
            (exwm-layout-toggle-mode-line))))
 
 ;; exwm: emacs en tant qu'environnement desktop
 (use-package exwm
   :config
-  ;; Set the default number of workspaces
+  ;; 5 workspaces par defaut
   (setq exwm-workspace-number 5)
-
- ;; When window "class" updates, use it to set the buffer name
+  
   (add-hook 'exwm-update-class-hook #'efs/exwm-update-class)
 
-  ;; When window title updates, use it to set the buffer name
+  ;; Quand le nom de la fenetre update on en profite pour renommer le buffer, utile pour la navigation entre les onglets du mavigateur
   (add-hook 'exwm-update-title-hook #'efs/exwm-update-title)
-
-  ;; Configure windows as they're created
   (add-hook 'exwm-manage-finish-hook #'efs/configure-window-by-class)
 
-  ;; Load the system tray before exwm-init
+
   (require 'exwm-systemtray)
   (setq exwm-systemtray-height 17)
   (exwm-systemtray-enable)
@@ -316,49 +323,45 @@
   (require 'exwm-randr)
   (exwm-randr-enable)
   (start-process-shell-command "xrandr" nil "xrandr --output Virtual-1 --primary --mode 1920x1080 --pos 0x0 --rotate normal")
-
-    ;; When window "class" updates, use it to set the buffer name
+  
   (add-hook 'exwm-update-class-hook #'efs/exwm-update-class)
-
-  ;; When EXWM starts up, do some extra confifuration
   (add-hook 'exwm-init-hook #'efs/exwm-init-hook)
+  (add-hook 'after-init-hook #'global-emojify-mode)
 
 
-  ;; These keys should always pass through to Emacs
+  ;; Cles pour lesquelles emacs sera prioritaire sur exwm
   (setq exwm-input-prefix-keys
     '(?\C-x
-      ?\C-w
       ?\C-u
+      ?\C-\M-n
       ?\C-h
       ?\M-x
       ?\M-`
       ?\M-&
       ?\M-:
-      ?\C-\M-j  ;; Buffer list
-      ?\C-\ ))  ;; Ctrl+Space
+      ?\C-\M-j
+      ?\C-\ ))
 
-  ;; Ctrl+Q will enable the next key to be sent directly
+  ;; Permet d'echapper le prochain keybinding de exwm, utilise pour copier / coller
   (define-key exwm-mode-map [?\C-q] 'exwm-input-send-next-key)
 
-  ;; Set up global key bindings.  These always work, no matter the input state!
-  ;; Keep in mind that changing this list after EXWM initializes has no effect.
+  ;; Implemente les keybindings globales
   (setq exwm-input-global-keys
         `(
-          ;; Reset to line-mode (C-c C-k switches to char-mode via exwm-input-release-keyboard)
           ([?\s-r] . exwm-reset)
 
-          ;; Move between windows
+          ;; Bouger entre les fenetres
 	  ([s-left] . windmove-left)
           ([s-right] . windmove-right)
           ([s-up] . windmove-up)
           ([s-down] . windmove-down)
 
-          ;; Launch applications via shell command
+          ;; Lance une application avec une commande shell
           ([?\s-&] . (lambda (command)
                        (interactive (list (read-shell-command "$ ")))
                        (start-process-shell-command command nil command)))
 
-          ;; Switch workspace
+          ;; Switch de workspace
           ([?\s-w] . exwm-workspace-switch)
 
           ;; 's-N': Switch to certain workspace with Super (Win) plus a number key (0 - 9)
@@ -383,3 +386,74 @@
   (desktop-environment-brightness-normal-increment "5%+")
   (desktop-environment-brightness-normal-decrement "5%-"))
 
+;; boite mail dans emacs
+(use-package mu4e
+  :ensure nil
+  :load-path "/usr/share/emacs/site-lisp/mu4e/"
+  :defer 20 ; Wait until 20 seconds after startup
+  :config
+  (setq mu4e-change-filenames-when-moving t)
+
+  
+
+  ;; Rafraichi les mail toutes les 3 minutes
+  (setq mu4e-update-interval (* 3 60))
+  (setq mu4e-get-mail-command "mbsync -a")
+  (setq mu4e-maildir "~/Mail")
+  (setq message-send-mail-function 'smtpmail-send-it)
+  
+  ;; ameliore l'affichage dans certains cas
+  (setq mu4e-compose-format-flowed t)
+
+  (setq mu4e-drafts-folder "/Gmail/[Gmail]/Drafts")
+  (setq mu4e-sent-folder   "/Gmail/[Gmail]/Sent Mail")
+  (setq mu4e-refile-folder "/Gmail/[Gmail]/All Mail")
+  (setq mu4e-trash-folder  "/Gmail/[Gmail]/Trash")(setq mu4e-contexts
+        (list
+         ;; Adresse Gmail Perso
+         (make-mu4e-context
+          :name "Perso"
+          :match-func
+            (lambda (msg)
+              (when msg
+                (string-prefix-p "/Gmail" (mu4e-message-field msg :maildir))))
+          :vars '((user-mail-address . "vicmartindev@gmail.com")
+                  (user-full-name    . "Victor Martin")
+		  (smtpmail-smtp-server  . "smtp.gmail.com")
+                  (smtpmail-smtp-service . 465)
+                  (smtpmail-stream-type  . ssl)
+                  (mu4e-drafts-folder  . "/Gmail/[Gmail]/Drafts")
+                  (mu4e-sent-folder  . "/Gmail/[Gmail]/Sent Mail")
+                  (mu4e-refile-folder  . "/Gmail/[Gmail]/All Mail")
+                  (mu4e-trash-folder  . "/Gmail/[Gmail]/Trash")))))
+
+  ;; Choisis par defaut le premier contexte qu'il trouve
+  (setq mu4e-context-policy 'pick-first)
+
+  (setq mu4e-maildir-shortcuts
+      '(("/Gmail/Inbox"             . ?i)
+        ("/Gmail/[Gmail]/Sent Mail" . ?s)
+        ("/Gmail/[Gmail]/Trash"     . ?t)
+        ("/Gmail/[Gmail]/Drafts"    . ?d)
+        ("/Gmail/[Gmail]/All Mail"  . ?a)))
+  (mu4e t))
+
+;; permet aux programmes externes d'aller chercher les mots de passe cryptes dans .authinfo.gpg
+(defun efs/lookup-password (&rest keys)
+  (let ((result (apply #'auth-source-search keys)))
+    (if result
+        (funcall (plist-get (car result) :secret))
+        nil)))
+
+;; quelques reglages de base pour ERC
+(setq erc-server "irc.libera.chat"
+      erc-nick "gabagool"
+      erc-user-full-name "Victor Martin"
+      erc-track-shorten-start 8
+      erc-autojoin-channels-alist '(("irc.libera.chat" "#systemcrafters" "#emacs"))
+      erc-kill-buffer-on-part t
+      erc-auto-query 'bury)
+
+
+;; bascule le clavier en qwerty
+(shell-command "setxkbmap us")
