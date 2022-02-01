@@ -7,7 +7,7 @@
  ;; If there is more than one, they won't work right.
  '(ivy-rich-mode t)
  '(package-selected-packages
-   '(emojify general python-mode dap-mode counsel-projectile typescript-mode desktop-environment evil-magit projectile evil-collection evil helpful counsel ivy-rich which-key rainbow-delimiters doom-modeline swiper ivy use-package magit))
+   '(fish-completion eshell-syntax-highlighting emojify general python-mode dap-mode counsel-projectile typescript-mode desktop-environment evil-magit projectile evil-collection evil helpful counsel ivy-rich which-key rainbow-delimiters doom-modeline swiper ivy use-package magit))
  '(set-input-method "us")
  '(set-language-environment "English")
  '(set-language-environment-hook nil)
@@ -20,10 +20,6 @@
  ;; If there is more than one, they won't work right.
  )
 
-(load "server")
-(unless (server-running-p) (server-start))
-
-
 (setq inhibit-startup-message t) ;; supprime le message d'accueil
 
 (scroll-bar-mode -1) ;; supprime la barre de scroll
@@ -35,13 +31,22 @@
 
 (setq visible-bell t) ;; remplace le son de cloche par un flash moins désagréable
 
-;; active le theme darcula de jetbrains que j'aime bien
+;; desactive le message d'avertissement quand on ouvre un fichier volumineux
+(setq large-file-warning-threshold nil)
+
+;; active le theme darcula de jetbrains, ainsi que la font que j'aime bien
 (add-to-list 'custom-theme-load-path "~/.emacs.d/themes/")(load-theme 'tango-dark)
-;; (add-to-list 'default-frame-alist '(font . "JetBrains Mono-14"))
-;; (add-to-list 'default-frame-alist '(line-spacing . 0.2))
+(add-to-list 'default-frame-alist '(font . "JetBrains Mono-15"))
 (load-theme 'jetbrains-darcula t)
 
 (global-set-key (kbd "<escape>") 'keyboard-escape-quit) ;; relie la touche escape à l'action quit
+
+;; ameliore le scrolling
+(setq mouse-wheel-scroll-amount '(1 ((shift) . 1))) ;; une ligne a la fois
+(setq mouse-wheel-progressive-speed nil) ;; desactive l'acceleration pendant le scroll
+(setq mouse-wheel-follow-mouse 't) ;; scroll de la fenetre
+(setq scroll-step 1) ;; scroll du clavier une ligne a la fois
+(setq use-dialog-box nil)
 
 ;; package qui permet une assignation plus facile des keybindings
 (use-package general
@@ -95,7 +100,8 @@
 (use-package swiper :ensure t)
 
 (use-package emojify
-  :hook (after-init . global-emojify-mode))
+  :hook (erc-mode . emojify-mode)
+  :commands emojify-mode)
 
 ;; installe ivy: https://github.com/abo-abo/swiper
 (use-package ivy
@@ -266,23 +272,43 @@
   :custom
   (magit-display-buffer-function #'magit-display-buffer-same-window-except-diff-v1))
 
-;; hook qui lance des applications en fond
+;; command highlighting pour eshell
+(use-package eshell-syntax-highlighting
+  :after esh-mode
+  :config
+  (eshell-syntax-highlighting-global-mode +1))
+
+;; auto completion pour eshell
+(use-package fish-completion
+  :hook (eshell-mode . fish-completion-mode))
+
+;; fonction qui lance des applications en fond
 (defun efs/run-in-background (command)
   (let ((command-parts (split-string command "[ ]+")))
     (apply #'call-process `(,(car command-parts) nil 0 nil ,@(cdr command-parts)))))
 
 ;; hooks au démarrage de exwm
 (defun efs/exwm-init-hook ()
+  
+  ;; demarre exwm dans le workspace 1
   (exwm-workspace-switch-create 1)
-  ;; Montre l'heure est la date en modeline
-  (setq display-time-day-and-date t)
-  (setq display-time-format "%H:%M:%S %a %d %b %Y")
-  (display-time-mode 1)
 
-  ;; icône en bas à droite du bluetooth, du son et de la connection internet
+  ;; demarre le serveur pour charger les mails et la polybar
+  (load "server")
+  (unless (server-running-p) (server-start))
+  
+  ;; lance la polybar
+  (efs/start-panel)
+
+  ;; lance redshift (filtre anti lumiere bleue) avec mes coordonnees GPS
+  (efs/run-in-background "redshift -l 43.70313:7.26608")
+
+  ;; lance le gestionnaire de notifications
+  (efs/run-in-background "dunst")
+  
+  ;; icône en bas à droite du son et de la connection internet
   (efs/run-in-background "nm-applet")
-  (efs/run-in-background "pasystray")
-  (efs/run-in-background "blueman-applet")) 
+  (efs/run-in-background "pasystray")) 
 
 ;; formattage du nom des buffers dans exwm pour mieux s'y retrouver
 (defun efs/exwm-update-class ()
@@ -299,14 +325,16 @@
   (pcase exwm-class-name
     ("Firefox" (exwm-workspace-move-window 2))
     ("Chromium" (exwm-workspace-move-window 1))
+    ("jetbrains-phpstorm" (exwm-workspace-move-window 8))
+    ("jetbrains-pycharm" (exwm-workspace-move-window 8))
     ("mpv" (exwm-floating-toggle-floating)
            (exwm-layout-toggle-mode-line))))
 
 ;; exwm: emacs en tant qu'environnement desktop
 (use-package exwm
   :config
-  ;; 5 workspaces par defaut
-  (setq exwm-workspace-number 5)
+  ;; 10 workspaces par defaut
+  (setq exwm-workspace-number 10)
   
   (add-hook 'exwm-update-class-hook #'efs/exwm-update-class)
 
@@ -314,15 +342,16 @@
   (add-hook 'exwm-update-title-hook #'efs/exwm-update-title)
   (add-hook 'exwm-manage-finish-hook #'efs/configure-window-by-class)
 
-
-  (require 'exwm-systemtray)
-  (setq exwm-systemtray-height 17)
-  (exwm-systemtray-enable)
-
-  ;; on définit la résolution pour éviter tout problème
+  ;; on définit la résolution des ecrans et leur disposition, sauvegardez une config sur xrandr pour obtenir le code
   (require 'exwm-randr)
   (exwm-randr-enable)
-  (start-process-shell-command "xrandr" nil "xrandr --output Virtual-1 --primary --mode 1920x1080 --pos 0x0 --rotate normal")
+  (start-process-shell-command "xrandr" nil "xrandr --output DVI-D-0 --mode 1920x1080 --pos 1970x0 --rotate left --output HDMI-0 --primary --mode 1920x1080 --pos 0x343 --rotate normal")
+
+  ;; fait la repartition de quel workspace appartient a quel ecran
+  (setq exwm-randr-workspace-monitor-plist '(1 "HDMI-0" 2 "HDMI-0" 3 "HDMI-0" 4 "HDMI-0" 8 "DVI-D-0" 9 "DVI-D-0" 0 "DVI-D-0"))
+
+  ;; teleporte le curseur de la souris sur l'autre ecran quand il y a un changement
+  (setq exwm-workspace-warp-cursor t)
   
   (add-hook 'exwm-update-class-hook #'efs/exwm-update-class)
   (add-hook 'exwm-init-hook #'efs/exwm-init-hook)
@@ -361,10 +390,9 @@
                        (interactive (list (read-shell-command "$ ")))
                        (start-process-shell-command command nil command)))
 
-          ;; Switch de workspace
           ([?\s-w] . exwm-workspace-switch)
 
-          ;; 's-N': Switch to certain workspace with Super (Win) plus a number key (0 - 9)
+          ;; 's-N': Switch de workspace
           ,@(mapcar (lambda (i)
                       `(,(kbd (format "s-%d" i)) .
                         (lambda ()
@@ -390,19 +418,19 @@
 (use-package mu4e
   :ensure nil
   :load-path "/usr/share/emacs/site-lisp/mu4e/"
-  :defer 20 ; Wait until 20 seconds after startup
+  :defer 1 ;; Attend 1 seconde apres le demarrage
   :config
   (setq mu4e-change-filenames-when-moving t)
 
   
 
-  ;; Rafraichi les mail toutes les 3 minutes
-  (setq mu4e-update-interval (* 3 60))
+  ;; Rafraichi les mails toutes les 5 minutes
+  (setq mu4e-update-interval (* 5 60))
   (setq mu4e-get-mail-command "mbsync -a")
   (setq mu4e-maildir "~/Mail")
   (setq message-send-mail-function 'smtpmail-send-it)
   
-  ;; ameliore l'affichage dans certains cas
+  ;; ameliore l'affichage des mails dans certains cas
   (setq mu4e-compose-format-flowed t)
 
   (setq mu4e-drafts-folder "/Gmail/[Gmail]/Drafts")
@@ -427,7 +455,7 @@
                   (mu4e-refile-folder  . "/Gmail/[Gmail]/All Mail")
                   (mu4e-trash-folder  . "/Gmail/[Gmail]/Trash")))))
 
-  ;; Choisis par defaut le premier contexte qu'il trouve
+  ;; Choisis par defaut le premier contexte qu'il trouve au demarrage de emacs, dans mon cas, mon adresse perso
   (setq mu4e-context-policy 'pick-first)
 
   (setq mu4e-maildir-shortcuts
@@ -453,6 +481,49 @@
       erc-autojoin-channels-alist '(("irc.libera.chat" "#systemcrafters" "#emacs"))
       erc-kill-buffer-on-part t
       erc-auto-query 'bury)
+
+;; commande pour quitter / demarrer polybar facilement
+(defvar efs/polybar-process nil
+  "Holds the process of the running Polybar instance, if any")
+
+(defun efs/kill-panel ()
+  (interactive)
+  (when efs/polybar-process
+    (ignore-errors
+      (kill-process efs/polybar-process)))
+  (setq efs/polybar-process nil))
+
+(defun efs/start-panel ()
+  (interactive)
+  (efs/kill-panel)
+  (setq efs/polybar-process (start-process-shell-command "polybar" nil "polybar panel")))
+
+;; remplace la modale par un message dans le minibuffer pour demander la phrase de passe de gpg
+(require 'epg)
+(setq epg-pinentry-mode 'loopback)
+
+;; controle de l'historique des notifications de dunst en ligne de commande
+(defun efs/dunstctl (command)
+  (start-process-shell-command "dunstctl" nil (concat "dunstctl " command)))
+
+(exwm-input-set-key (kbd "s-b") (lambda () (interactive) (efs/dunstctl "history-pop")))
+(exwm-input-set-key (kbd "s-B") (lambda () (interactive) (efs/dunstctl "close-all")))
+
+
+;; pause et resume des notifications de dunst
+(defun efs/disable-desktop-notifications ()
+  (interactive)
+  (start-process-shell-command "notify-send" nil "notify-send \"DUNST_COMMAND_PAUSE\""))
+
+(defun efs/enable-desktop-notifications ()
+  (interactive)
+  (start-process-shell-command "notify-send" nil "notify-send \"DUNST_COMMAND_RESUME\""))
+
+(defun efs/toggle-desktop-notifications ()
+  (interactive)
+  (start-process-shell-command "notify-send" nil "notify-send \"DUNST_COMMAND_TOGGLE\""))
+
+  (start-process-shell-command "notify-send" nil "notify-send \"Notifications!\"")
 
 
 ;; bascule le clavier en qwerty
