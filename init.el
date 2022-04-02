@@ -7,7 +7,8 @@
  ;; If there is more than one, they won't work right.
  '(ivy-rich-mode t)
  '(package-selected-packages
-   '(fish-completion eshell-syntax-highlighting emojify general python-mode dap-mode counsel-projectile typescript-mode desktop-environment evil-magit projectile evil-collection evil helpful counsel ivy-rich which-key rainbow-delimiters doom-modeline swiper ivy use-package magit))
+   (quote
+    (exwm ivy-prescient fish-completion eshell-syntax-highlighting emojify general python-mode dap-mode counsel-projectile typescript-mode desktop-environment evil-magit projectile evil-collection evil helpful counsel ivy-rich which-key rainbow-delimiters doom-modeline swiper ivy use-package magit)))
  '(set-input-method "us")
  '(set-language-environment "English")
  '(set-language-environment-hook nil)
@@ -48,26 +49,15 @@
 (setq scroll-step 1) ;; scroll du clavier une ligne a la fois
 (setq use-dialog-box nil)
 
-;; package qui permet une assignation plus facile des keybindings
-(use-package general
-  :config
-  (general-create-definer rune/leader-keys
-    :keymaps '(normal insert visual emacs)
-    :prefix "SPC"
-    :global-prefix "C-SPC")
+;; Initialise les packages
+(require 'package)
 
-  (rune/leader-keys
-    "t"  '(:ignore t :which-key "toggles")
-    "tt" '(counsel-load-theme :which-key "choose theme")))
 
 ;; empêche le comportement agaçant par défaut qui ferme tous les autres buffer ouvert sauf celui sur lequel on est, quand on appuie sur espace
 (defadvice keyboard-escape-quit
   (around keyboard-escape-quit-dont-close-windows activate)
   (let ((buffer-quit-function (lambda () ())))
     ad-do-it))
-
-;; Initialise les packages
-(require 'package)
 
 ;; instancie les repos de packages pour bénéficier d'une auto-update
 (setq package-archives '(("melpa" . "https://melpa.org/packages/")
@@ -85,6 +75,18 @@
 ;; always-ensure vérifie que les packages sont à jour
 (require 'use-package)
 (setq use-package-always-ensure t)
+
+;; package qui permet une assignation plus facile des keybindings
+(use-package general
+  :config
+  (general-create-definer rune/leader-keys
+    :keymaps '(normal insert visual emacs)
+    :prefix "SPC"
+    :global-prefix "C-SPC")
+
+  (rune/leader-keys
+    "t"  '(:ignore t :which-key "toggles")
+    "tt" '(counsel-load-theme :which-key "choose theme")))
 
 ;; active le numéros des ligne à droite + exceptions dans certains modes comme le eshell ou ça sert à rien
 (column-number-mode)
@@ -178,57 +180,6 @@
   (setq lsp-headerline-breadcrumb-segments '(path-up-to-project file symbols))
   (lsp-headerline-breadcrumb-mode))
 
-;; IDE dans emacs
-(use-package lsp-mode
-  :commands (lsp lsp-deferred)
-  :hook (lsp-mode . efs/lsp-mode-setup)
-  :init
-  (setq lsp-keymap-prefix "C-c l")
-  :config
-  (lsp-enable-which-key-integration t))
-
-(use-package lsp-ui
-  :hook (lsp-mode . lsp-ui-mode)
-  :custom
-  (lsp-ui-doc-position 'bottom))
-
-(use-package lsp-treemacs
-  :after lsp)
-
-(use-package lsp-ivy)
-
-(use-package dap-mode
-  ;; Uncomment the config below if you want all UI panes to be hidden by default!
-  ;; :custom
-  ;; (lsp-enable-dap-auto-configure nil)
-  ;; :config
-  ;; (dap-ui-mode 1)
-
-  :config
-  (require 'dap-node)
-  (dap-node-setup)
-  (general-define-key
-    :keymaps 'lsp-mode-map
-    :prefix lsp-keymap-prefix
-    "d" '(dap-hydra t :wk "debugger")))
-
-;; contenu additionnel si on veut utiliser lsp avec typescript ou python
-(use-package typescript-mode
-  :mode "\\.ts\\'"
-  :hook (typescript-mode . lsp-deferred)
-  :config
-  (setq typescript-indent-level 2))
-
-(use-package python-mode
-  :ensure t
-  :hook (python-mode . lsp-deferred)
-  :custom
-  (python-shell-interpreter "python3")
-  (dap-python-executable "python3")
-  (dap-python-debugger 'debugpy)
-  :config
-  (require 'dap-python))
-
 (use-package company
   :after lsp-mode
   :hook (lsp-mode . company-mode)
@@ -250,27 +201,6 @@
   :config
   (setq which-key-idle-delay 0.5))
 
-
-;; naviguer facilement dans les projets ayant un repo git, en utilisant la navigation de ivy
-(use-package projectile
-  :diminish projectile-mode
-  :config (projectile-mode)
-  :custom ((projectile-completion-system 'ivy))
-  :bind-keymap
-  ("C-c p" . projectile-command-map)
-  :init
-  (when (file-directory-p "~/Projets")
-    (setq projectile-project-search-path '("~/Projets")))
-  (setq projectile-switch-project-action #'projectile-dired))
-
-(use-package counsel-projectile
-  :config (counsel-projectile-mode))
-
-
-;; gestionnaire de versioning
-(use-package magit
-  :custom
-  (magit-display-buffer-function #'magit-display-buffer-same-window-except-diff-v1))
 
 ;; command highlighting pour eshell
 (use-package eshell-syntax-highlighting
@@ -325,8 +255,6 @@
   (pcase exwm-class-name
     ("Firefox" (exwm-workspace-move-window 2))
     ("Chromium" (exwm-workspace-move-window 1))
-    ("jetbrains-phpstorm" (exwm-workspace-move-window 8))
-    ("jetbrains-pycharm" (exwm-workspace-move-window 8))
     ("mpv" (exwm-floating-toggle-floating)
            (exwm-layout-toggle-mode-line))))
 
@@ -345,10 +273,10 @@
   ;; on définit la résolution des ecrans et leur disposition, sauvegardez une config sur xrandr pour obtenir le code
   (require 'exwm-randr)
   (exwm-randr-enable)
-  (start-process-shell-command "xrandr" nil "xrandr --output DVI-D-0 --mode 1920x1080 --pos 1970x0 --rotate left --output HDMI-0 --primary --mode 1920x1080 --pos 0x343 --rotate normal")
+  (start-process-shell-command "xrandr" nil "xrandr --output DVI-D-0 --primary --mode 1920x1080 --pos 0x414 --rotate normal --output HDMI-0 --mode 1920x1080 --pos 1920x0 --rotate left")
 
   ;; fait la repartition de quel workspace appartient a quel ecran
-  (setq exwm-randr-workspace-monitor-plist '(1 "HDMI-0" 2 "HDMI-0" 3 "HDMI-0" 4 "HDMI-0" 8 "DVI-D-0" 9 "DVI-D-0" 0 "DVI-D-0"))
+  (setq exwm-randr-workspace-monitor-plist '(1 "DVI-D-0" 2 "DVI-D-0" 3 "DVI-D-0" 4 "DVI-D-0" 8 "HDMI-0" 9 "HDMI-0" 0 "HDMI-0"))
 
   ;; teleporte le curseur de la souris sur l'autre ecran quand il y a un changement
   (setq exwm-workspace-warp-cursor t)
@@ -432,6 +360,10 @@
   
   ;; ameliore l'affichage des mails dans certains cas
   (setq mu4e-compose-format-flowed t)
+  (add-hook 'mu4e-compose-mode-hook (lambda () (use-hard-newlines -1)))
+
+  ;; enleve les messages d'indexation dans le mini-buffer
+  (setf mu4e-display-index-messages nil) 
 
   (setq mu4e-drafts-folder "/Gmail/[Gmail]/Drafts")
   (setq mu4e-sent-folder   "/Gmail/[Gmail]/Sent Mail")
@@ -524,7 +456,3 @@
   (start-process-shell-command "notify-send" nil "notify-send \"DUNST_COMMAND_TOGGLE\""))
 
   (start-process-shell-command "notify-send" nil "notify-send \"Notifications!\"")
-
-
-;; bascule le clavier en qwerty
-(shell-command "setxkbmap us")
